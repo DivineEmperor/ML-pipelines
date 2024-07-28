@@ -10,6 +10,12 @@ import numpy as np
 
 from sklearn.model_selection import train_test_split
 from dataclasses import dataclass
+from src.components.data_transormation import DataTransformationConfig
+from src.components.data_transormation import DataTransformation
+
+from src.components.model_trainer import ModelTrainerConfig
+from src.components.model_trainer import ModelTrainer
+
 
 @dataclass
 class DataIngestionConfig:
@@ -20,7 +26,7 @@ class DataIngestionConfig:
     train_data_labels_path: str = "artifacts/train/stud_labels.csv"
     test_size: float = 0.2
     random_state: int = 42
-    target_column: str = 'avg_score'
+    target_column: str = 'math_score'
 
 
 class DataIngestion:
@@ -36,7 +42,7 @@ class DataIngestion:
     def load_data(self):
         try:
             self.data = pd.read_csv(self.config.data_path)
-            self.data['avg_score'] = self.data[['math_score', 'reading_score', 'writing_score']].mean(axis=1)
+            
 
         except Exception as e:
             logger.error(f"Error loading data: {e}")
@@ -81,9 +87,25 @@ class DataIngestion:
         self.make_config_dir()
         self.save_data()
 
+        return (
+            self.config.train_data_features_path,
+            self.config.train_data_labels_path,
+            self.config.test_data_features_path,
+            self.config.test_data_target_path
+        )
+
 
 
 if __name__ == "__main__":
     config = DataIngestionConfig()
     data_ingestion = DataIngestion(config)
-    data_ingestion.ingest_data()
+    xtr,ytr,xt,yt = data_ingestion.ingest_data()
+
+    data_tranformer = DataTransformation()
+    xtr,ytr,xt,yt,pre_processing_obj  = data_tranformer.initiate_data_transformation(xtr,ytr,xt,yt)
+    # print(len(xtr),len(ytr),len(xt),len(yt))
+    # print(xtr.shape,ytr.shape,xt.shape,yt.shape)
+    
+    model_trainer = ModelTrainer()
+    print(model_trainer.initiate_model_trainer(xtr,ytr,xt,yt))
+

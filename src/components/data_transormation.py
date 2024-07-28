@@ -1,63 +1,125 @@
-import os
 import sys
-sys.path.append('/Users/pavansaiguduru/Desktop/ML/ML_projects/Projets')
-from src.exceptions import CustomException
-from src.exceptions import CustomException
-from src.logger import logging as logger
+from dataclasses import dataclass
 
+import numpy as np 
 import pandas as pd
-import numpy as np
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder,StandardScaler
 
-from sklearn.preprocessing import OneHotEncoder
+from src.exceptions import CustomException
+from src.logger import logging
+import os
 
+from src.utils import save_object
+
+@dataclass
+class DataTransformationConfig:
+    preprocessor_obj_file_path=os.path.join('artifacts',"proprocessor.pkl")
 
 class DataTransformation:
-    def __init__(self, train_data_features_path, test_data_features_path, train_data_labels_path, test_data_target_path):
-        self.train_data_features_path = train_data_features_path
-        self.test_data_features_path = test_data_features_path
-        self.train_data_labels_path = train_data_labels_path
-        self.test_data_target_path = test_data_target_path
-        self.encoder = OneHotEncoder(sparse_output=False)
+    def __init__(self):
+        self.data_transformation_config=DataTransformationConfig()
 
-    def save_data(self,X_train, X_test, y_train, y_test):
+    def get_data_transformer_object(self):
+        '''
+        This function is responsible for data trnasformation
+        
+        '''
         try:
-            X_train.to_csv(self.train_data_features_path, index=False)
-            X_test.to_csv(self.test_data_features_path, index=False)
-            y_train.to_csv(self.train_data_labels_path, index=False)
-            y_test.to_csv(self.test_data_target_path, index=False)
+            numerical_columns = ["writing_score", "reading_score"]
+            categorical_columns = [
+                "gender",
+                "race_ethnicity",
+                "parental_level_of_education",
+                "lunch",
+                "test_preparation_course",
+            ]
+
+            num_pipeline= Pipeline(
+                steps=[
+                ("imputer",SimpleImputer(strategy="median")),
+                ("scaler",StandardScaler())
+
+                ]
+            )
+
+            cat_pipeline=Pipeline(
+
+                steps=[
+                ("imputer",SimpleImputer(strategy="most_frequent")),
+                ("one_hot_encoder",OneHotEncoder()),
+                ("scaler",StandardScaler(with_mean=False))
+                ]
+
+            )
+
+            logging.info(f"Categorical columns: {categorical_columns}")
+            logging.info(f"Numerical columns: {numerical_columns}")
+
+            preprocessor=ColumnTransformer(
+                [
+                ("num_pipeline",num_pipeline,numerical_columns),
+                ("cat_pipelines",cat_pipeline,categorical_columns)
+
+                ]
+
+
+            )
+
+            return preprocessor
+        
         except Exception as e:
-            logger.error(f"Error saving data: {e}")
-            raise CustomException("Error saving data",e)
+            raise CustomException(e,sys)
         
-    def onehot_encode(self, data, columns):
-        self.encoder.fit_transform(data[columns])
-        tranformed_df  = pd.DataFrame(self.encoder.transform(data[columns]), columns=self.encoder.get_feature_names_out(columns))
-        data = data.drop(columns, axis=1)
-        data = pd.concat([data, tranformed_df], axis=1)
-        return data
-    
-    def clean_data(self, data):
-        # data cleaning logic
-        data = data.dropna()
-        
-    def transform_data(self, data):
-        # data transformation logic
-        X_train = pd.read_csv(self.train_data_features_path)
-        X_test = pd.read_csv(self.test_data_features_path)
-        y_train = pd.read_csv(self.train_data_labels_path)
-        y_test = pd.read_csv(self.test_data_target_path)
-        categorical_columns = [col for col in X_train.columns if X_train[col].dtype == 'object']
-        X_train = self.onehot_encode(X_train,categorical_columns) 
-        X_test = self.onehot_encode(X_test,categorical_columns)
+    def initiate_data_transformation(self,train_featues_path,train_labels,test_featues_path,test_labels):
 
-        self.save_data(X_train, X_test, y_train, y_test)
+        try:
+            
+
+           
+
+            logging.info("Obtaining preprocessing object")
+
+            preprocessing_obj=self.get_data_transformer_object()
 
 
-if __name__ == "__main__":
-    train_data_features_path = "artifacts/train/stud_features.csv"
-    test_data_features_path = "artifacts/test/studt_features.csv"
-    train_data_labels_path = "artifacts/train/stud_labels.csv"
-    test_data_target_path = "artifacts/test/studt_target.csv"
-    data_transformation = DataTransformation(train_data_features_path, test_data_features_path, train_data_labels_path, test_data_target_path)
-    data = pd.read_csv("notebooks/data/stud.csv")
-    data_transformation.transform_data(data)
+            input_feature_train_df= pd.read_csv(train_featues_path)
+            target_feature_train_df= pd.read_csv(train_labels)
+
+            input_feature_test_df= pd.read_csv(test_featues_path)
+            target_feature_test_df= pd.read_csv(test_labels)
+
+            logging.info("Read train and test data completed")
+
+            logging.info(
+                f"Applying preprocessing object on training dataframe and testing dataframe."
+            )
+
+            input_feature_train_arr=preprocessing_obj.fit_transform(input_feature_train_df)
+            input_feature_test_arr=preprocessing_obj.transform(input_feature_test_df)
+
+            train_arr = np.c_[
+                input_feature_train_arr, np.array(target_feature_train_df)
+            ]
+            test_arr = np.c_[input_feature_test_arr, np.array(target_feature_test_df)]
+
+            logging.info(f"Saved preprocessing object.")
+
+            save_object(
+
+                file_path=self.data_transformation_config.preprocessor_obj_file_path,
+                obj=preprocessing_obj
+
+            )
+
+            return (
+                input_feature_train_arr,
+                np.array(target_feature_train_df),
+                input_feature_test_arr,
+                np.array(target_feature_test_df),
+                self.data_transformation_config.preprocessor_obj_file_path,
+            )
+        except Exception as e:
+            raise CustomException(e,sys)
